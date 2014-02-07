@@ -68,12 +68,13 @@ module NicoRepo
                     # ニコレポにリンクされているコンテンツについての情報を取得
                     details_elem = log_elem.at("div.log-details")
                     begin
-                    @target_thumb = details_elem.at("div.log-target-thumbnail").at("a").at("img").get_attribute("data-src")
+                        @target_thumb = details_elem.at("div.log-target-thumbnail").at("a").at("img").get_attribute("data-src")
                     rescue; end
                     begin 
-                    target_elem = details_elem.at("div.log-target-info").at("a")
-                    @target_url = target_elem["href"]
-                    @target_title = target_elem.inner_text
+                        target_elem = details_elem.at("div.log-target-info").at("a")
+                        @target_url = target_elem["href"]
+                        @target_short_url = "http://nico.ms/#{@target_url.split("/").last}"
+                        @target_title = target_elem.inner_text
                     rescue; end
                     # ニコレポの日時を取得
                     date_elem = details_elem.at("div.log-footer").at("div.log-footer-inner").at("a.log-footer-date").at("time")
@@ -86,7 +87,7 @@ module NicoRepo
         attr_reader :report_from, :report_type
         attr_reader :author_url, :author_name, :author_image_url
         attr_reader :content_body
-        attr_reader :target_thumb, :target_url, :target_type, :target_title
+        attr_reader :target_thumb, :target_url, :target_short_url, :target_type, :target_title
         attr_reader :date, :date_str
     end
 
