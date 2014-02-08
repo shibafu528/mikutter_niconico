@@ -116,6 +116,8 @@ Plugin.create(:mikutter_nicorepo) do
         end
         adjustment("更新間隔(分)", :mikutter_nicorepo_reload_min, 1, 30)
     end
+    
+    Plugin[:openimg].addsupport(/^http:\/\/(seiga\.nicovideo\.jp\/seiga|nico\.ms)\/im\d+/, "tag" => "meta", "attribute" => "content", "property" => "og:image")
 
     SerialThread.new {
         update()
