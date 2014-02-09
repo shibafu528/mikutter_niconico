@@ -69,11 +69,11 @@ Plugin.create(:mikutter_nicorepo) do
                     end
                     # Messageを捏造
                     message = Message.new({
-                            :id => r.date.to_i,
+                            :id => r.time.to_i,
                             :message => message_text,
                             :user => user,
                             :source => "nicorepo",
-                            :created => r.date.localtime,
+                            :created => r.time,
                             :entities => entities
                         })
                     # タイムラインにどーん

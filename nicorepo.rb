@@ -77,9 +77,8 @@ module NicoRepo
                         @target_title = target_elem.inner_text
                     rescue; end
                     # ニコレポの日時を取得
-                    date_elem = details_elem.at("div.log-footer").at("div.log-footer-inner").at("a.log-footer-date").at("time")
-                    @date = Time::parse(date_elem["datetime"])
-                    @date_str = date_elem.text.gsub(/(\r|\n|\t)/,"")
+                    date_elem = details_elem.at("time.relative")
+                    @time = Time::parse(date_elem["datetime"]).localtime
                 end
             }
         end
@@ -88,7 +87,7 @@ module NicoRepo
         attr_reader :author_url, :author_name, :author_image_url
         attr_reader :content_body
         attr_reader :target_thumb, :target_url, :target_short_url, :target_type, :target_title
-        attr_reader :date, :date_str
+        attr_reader :time
     end
 
     class NotLoginException < StandardError; end
