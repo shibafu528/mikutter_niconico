@@ -54,7 +54,7 @@ Plugin.create(:mikutter_nicorepo) do
                         :hashtags => [],
                         :user_mentions => []
                     }
-                    unless r.target_title.nil? then 
+                    if not r.target_title.nil? then 
                         # targetが無いときもあるのでここで面倒を見ておく
                         message_text += "\n\n#{r.target_title}\n"
                         indices_s = message_text.length
@@ -64,6 +64,18 @@ Plugin.create(:mikutter_nicorepo) do
                                     :url => r.target_short_url,
                                     :expanded_url => r.target_url,
                                     :display_url => r.target_short_url,
+                                    :indices => [indices_s, indices_e]
+                                }]
+                    elsif r.report_type.include?(NicoRepo::CO_ACTION_INFO) then
+                        # コミュお知らせの時、何もURLが無いっていうのも不便
+                        # ということで付け足す
+                        indices_s = message_text.length
+                        message_text += "\n\n#{r.author_url}"
+                        indices_e = message_text.length
+                        entities[:urls] = [{
+                                    :url => r.author_url,
+                                    :expanded_url => r.author_url,
+                                    :display_url => r.author_url,
                                     :indices => [indices_s, indices_e]
                                 }]
                     end
