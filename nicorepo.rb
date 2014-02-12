@@ -44,7 +44,7 @@ module NicoRepo
             end
 
             element.children.each {|log_elem|
-                if log_elem["class"] == "log-author " then
+                if log_elem["class"].to_s.include?("log-author ") then
                     # ニコレポの発生源を取得
                     author_elem = log_elem.at("a")
                     @author_url = author_elem.get_attribute("href")
