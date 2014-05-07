@@ -1,5 +1,5 @@
 ---
-slug: :mikutter_nicorepo
+slug: :mikutter_niconico
 depends:
   mikutter: 0.2.2.1476
   plugin: 
@@ -7,5 +7,5 @@ depends:
   - openimg
 version: '1.1'
 author: shibafu528
-name: mikutter_nicorepo
-description: mikutter上でニコニコ動画のニコレポを読む感じのやつ
+name: mikutter_niconico
+description: mikutter上でニコニコ動画の情報をキャッチ

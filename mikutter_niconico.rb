@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
-require File.join(File.dirname(__FILE__), 'nicorepo.rb')
+require_relative 'nicorepo'
+require_relative 'nsen'
 
 Plugin.create(:mikutter_nicorepo) do
     UserConfig[:mikutter_nicorepo_reload_min]   ||= 5
     UserConfig[:mikutter_nicorepo_account_mail] ||= ""
     UserConfig[:mikutter_nicorepo_account_pass] ||= ""
 
+    defactivity "mikutter_niconico", "niconicoログイン"
+    defactivity "mikutter_nsen", "Nsen"
     defactivity "mikutter_nicorepo", "ニコレポリーダー"
 
     ICON = File.join(File.dirname(__FILE__), 'mikutter_nicorepo.png').freeze
@@ -100,12 +103,12 @@ Plugin.create(:mikutter_nicorepo) do
                 @reader.login(UserConfig[:mikutter_nicorepo_account_mail],UserConfig[:mikutter_nicorepo_account_pass])
             rescue
                 @login_state = false
-                activity :mikutter_nicorepo, "niconicoログインに失敗しました"
+                activity :mikutter_niconico, "niconicoログインに失敗しました"
             else
                 @last_mail = UserConfig[:mikutter_nicorepo_account_mail]
                 @last_pass = UserConfig[:mikutter_nicorepo_account_pass]
                 @login_state = true
-                activity :mikutter_nicorepo, "niconicoログインに成功しました"
+                activity :mikutter_niconico, "niconicoログインに成功しました"
             end
         end
     end
@@ -115,12 +118,30 @@ Plugin.create(:mikutter_nicorepo) do
         timeline :nicorepo
     end
 
-    settings("ニコレポリーダー") do
+    command(:mikutter_nsen_play,
+        name: "Nsenに接続",
+        condition: lambda{ |opt| true},
+        visible: false,
+        role: :window) do |opt|
+        session = @reader.get_nsen_session(0)
+        activity :mikutter_nsen, "Nsenに接続しました! (ch01)"
+        session[:stream].start do |stream|
+            SerialThread.new do 
+                activity :mikutter_nsen, stream.to_s
+            end
+        end
+    end
+
+    settings("niconico") do
         settings("niconicoアカウント") do
             input "メールアドレス", :mikutter_nicorepo_account_mail
             inputpass "パスワード", :mikutter_nicorepo_account_pass
         end
-        adjustment("更新間隔(分)", :mikutter_nicorepo_reload_min, 1, 30)
+        settings("ニコレポリーダー") do
+            adjustment("更新間隔(分)", :mikutter_nicorepo_reload_min, 1, 30)
+        end
+        settings("Nsen") do
+        end
     end
     
     Plugin[:openimg].addsupport(/^http:\/\/(seiga\.nicovideo\.jp\/seiga|nico\.ms)\/im\d+/, "tag" => "meta", "attribute" => "content", "property" => "og:image")
