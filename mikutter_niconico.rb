@@ -113,6 +113,27 @@ Plugin.create(:mikutter_nicorepo) do
         end
     end
 
+    def play(stream)
+        activity :mikutter_nsen, "#{stream[:video]} / #{stream[:title]}"
+        SerialThread.new do
+            fn = @reader.download(stream[:video])
+            out = fn + ".wav"
+            if system("ffmpeg -i \"#{fn}\" -vn -ab 96k -ar 44100 -acodec pcm_s16le #{out}") then
+                Plugin.call(:play_sound, out)
+            else
+                activity :mikutter_nsen, "再生失敗"
+            end
+        end
+    end
+
+    def prepare(stream)
+        activity :mikutter_nsen, "プリロード(#{stream[:video]})"
+        SerialThread.new do
+            fn = @reader.download(stream[:video])
+            activity :mikutter_nsen, "プリロード完了(#{fn})"
+        end
+    end
+
     tab(:mikutter_nicorepo, "ニコレポリーダー") do
         set_icon(ICON)
         timeline :nicorepo
@@ -124,10 +145,21 @@ Plugin.create(:mikutter_nicorepo) do
         visible: false,
         role: :window) do |opt|
         session = @reader.get_nsen_session(0)
-        activity :mikutter_nsen, "Nsenに接続しました! (ch01)"
-        session[:stream].start do |stream|
-            SerialThread.new do 
-                activity :mikutter_nsen, stream.to_s
+        unless session[:current] == nil then
+            play(session[:current])
+        end
+        @nthread = session[:stream].start do |stream|
+            case stream[:type]
+            when Nsen::N_PLAY then
+                play(stream)
+            when Nsen::N_PREPARE then
+                prepare(stream)
+            when Nsen::N_COMMENT then
+                activity :mikutter_nsen, "Comment: #{stream[:text]}"
+            when "response" then
+                activity :mikutter_nsen, "Nsenに接続しました! (#{Nsen::CHANNEL[session[:channel]]})"
+            else
+                p stream
             end
         end
     end

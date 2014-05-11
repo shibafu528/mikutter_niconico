@@ -1,25 +1,127 @@
 # -*- coding: utf-8 -*-
 require 'net/http'
 require 'nokogiri'
+require 'open-uri'
+require 'rexml/document'
+require 'json'
+require 'cgi'
 require_relative 'nicorepo'
 
 module NicoRepo
+    class ThumbInfo
+        def initialize(id)
+            if id.nil? then
+                return
+            end
+
+            xml = open("http://ext.nicovideo.jp/api/getthumbinfo/#{id}") {|f|
+                f.read
+            }
+            doc = REXML::Document.new(xml)
+            
+            @status = doc.elements["nicovideo_thumb_response"].attributes["status"]
+            if @status == "ok" then
+                e = doc.elements["nicovideo_thumb_response/thumb"]
+                @video_id = e.elements["video_id"].text
+                @title = e.elements["title"].text
+                @movie_type = e.elements["movie_type"].text
+                @user_id = e.elements["user_id"]
+                @user_id = @user_id.nil? ? nil : @user_id.text.to_i
+                unless @user_id.nil? then
+                    @user_nickname = e.elements["user_nickname"].text
+                end
+                @tags = Array.new
+                count = 0
+                e.elements.each("tags") { |tags_root|
+                    if tags_root.attributes["domain"] == "jp" then
+                        tags_root.elements.each {|tag|
+                            @tags[count] = tag.text
+                            count += 1
+                        }
+                    end
+                }
+            end
+        end
+
+        def export_json
+            hash = {
+                "video_id" => @video_id,
+                "title" => @title,
+                "movie_type" => @movie_type,
+                "user_id" => @user_id,
+                "user_nickname" => @user_nickname,
+                "tags" => @tags
+            }
+            return JSON.generate(hash)
+        end
+
+        def import_json(json)
+            hash = JSON.parse(json)
+            @status = "ok"
+            @video_id = hash["video_id"]
+            @title = hash["title"]
+            @movie_type = hash["movie_type"]
+            @user_id = hash["user_id"]
+            @user_nickname = hash["user_nickname"]
+            @tags = hash["tags"]
+        end
+
+        attr_reader :status, :video_id, :title, :movie_type, :user_id, :user_nickname, :tags
+    end
+
     class NicoRepoReader
         def get_nsen_session(channel)
-            p = @agent.get("http://watch.live.nicovideo.jp/api/getplayerstatus/nsen/#{Nsen::CHANNEL[channel]}")
-            if not p.at("getplayerstatus").attribute("status").value() == "ok"
+            page = @agent.get("http://watch.live.nicovideo.jp/api/getplayerstatus/nsen/#{Nsen::CHANNEL[channel]}")
+            unless page.at("getplayerstatus").attribute("status").value() == "ok"
                 raise "放送は既に終了しています"
             end
+            curr = page.at("contents")
+            current = nil
+            begin
+                current = { 
+                    video: curr.inner_text().split(":")[1], 
+                    title: curr.attribute("title").value() 
+                }
+            end
             {
-                current: p.at("contents").inner_text(),
-                stream: Nsen::NsenStream.new(p.at("addr").inner_text, p.at("port").inner_text(), p.at("thread").inner_text())
+                channel: channel,
+                current: current,
+                stream: Nsen::NsenStream.new(page.at("addr").inner_text, page.at("port").inner_text(), page.at("thread").inner_text())
             }
+        end
+
+        def getflv(id)
+            @agent.get("http://www.nicovideo.jp/watch/#{id}")
+            response = @agent.get("http://flapi.nicovideo.jp/api/getflv/#{id}?as3=1")
+            map = {}
+            response.body.scan(/([^&]+)=([^&]*)/).each { |i|
+                map[i[0]] = i[1]
+            }
+            return map
+        end
+
+        def download(id)
+            puts "[mikutter_nsen] start download #{id}"
+            thumbinfo = ThumbInfo.new(id)
+            flvinfo = getflv(id)
+            filename = File.join(Environment::TMPDIR, "#{id}.#{thumbinfo.movie_type}")
+            unless File.exist?(filename) then
+                open(filename, "wb") do |f|
+                    video_url = CGI::unescape(flvinfo["url"])
+                    f.print @agent.get_file(video_url)
+                end
+            end
+            filename
         end
     end
 end
 
 module Nsen
     CHANNEL = ["vocaloid", "toho", "nicoindies", "sing", "play", "pv", "hotaru", "allgenre"]
+    N_COMMENT = "comment"
+    N_PLAY = "play"
+    N_PREPARE = "prepare"
+    N_PANEL = "nspanel"
 
     class NsenStream
         def initialize(address, port, thread)
@@ -30,15 +132,38 @@ module Nsen
 
         def start
             Thread.new do
-                started = Time.new.to_i
-                yield("started=#{started}")
+                puts "[nsen.rb] CServer: #{@address}:#{@port}/#{@thread}"
                 TCPSocket.open(@address, @port.to_i) do |sock|
-                    ticket = "<thread thread=\"#{@thread}\" version=\"20061206\" res_from=\"-1000\"/>\0"
+                    ticket = "<thread thread=\"#{@thread}\" version=\"20061206\" res_from=\"0\"/>\0"
                     sock.write(ticket)
                     while true
                         stream = sock.gets("\0")
                         e = Nokogiri::XML(stream).elements
-                        yield("t:#{e.attribute("date").value()} #{e.inner_text()}")
+                        res = nil
+                        begin
+                            res = {
+                                    type: "comment",
+                                    date: e.attribute("date").value(),
+                                    text: e.inner_text()
+                                }
+                            if res[:text].start_with?("/") then
+                                sp = res[:text].split(" ")
+                                sp[0].slice!(0)
+                                res[:type] = sp[0]
+                                if res[:text].start_with?("/play") then
+                                    res[:video] = sp[1].split(":")[1]
+                                    res[:title] = res[:text].match(/main \"(.+)\"/)[1]
+                                elsif res[:text].start_with?("/prepare") then
+                                    res[:video] = sp[1]
+                                end
+                            end
+                        rescue
+                            res = {
+                                    type: "response",
+                                    element: e
+                                }
+                        end
+                        yield(res)
                     end
                 end
             end
