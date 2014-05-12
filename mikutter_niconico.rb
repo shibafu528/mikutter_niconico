@@ -168,7 +168,12 @@ Plugin.create(:mikutter_nicorepo) do
         condition: lambda{ |opt| @nthread == nil},
         visible: false,
         role: :window) do |opt|
-        session = @reader.get_nsen_session(0)
+        begin
+            session = @reader.get_nsen_session(0)
+        rescue
+            activity :mikutter_nsen, "Nsenの接続に失敗しました"
+            return
+        end
         unless session[:current] == nil then
             play(session[:current])
         end
