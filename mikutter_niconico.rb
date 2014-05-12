@@ -7,7 +7,7 @@ Plugin.create(:mikutter_nicorepo) do
     UserConfig[:mikutter_nicorepo_account_mail] ||= ""
     UserConfig[:mikutter_nicorepo_account_pass] ||= ""
 
-    defactivity "mikutter_niconico", "niconicoログイン"
+    defactivity "mikutter_niconico", "niconico"
     defactivity "mikutter_nsen", "Nsen"
     defactivity "mikutter_nicorepo", "ニコレポリーダー"
 
@@ -16,6 +16,9 @@ Plugin.create(:mikutter_nicorepo) do
     @login_state = false
     @last_mail = nil
     @last_pass = nil
+
+    @nplaying = nil
+    @nthread = nil
 
     @reader = NicoRepo::NicoRepoReader.new()
 
@@ -44,10 +47,28 @@ Plugin.create(:mikutter_nicorepo) do
                 reports.each {|r|
                     # 適当にごまかしつつユーザっぽいのものをでっちあげる
                     user = User.new({
-                            :id => -10000,
-                            :idname => r.author_name,
+                            :id => 1,
+                            :idname => lambda{
+                                case r.report_type
+                                when NicoRepo::VIDEO_UPLOAD, NicoRepo::IMAGE_UPLOAD, NicoRepo::REGISTER_CHBLOG then
+                                    "Upload"
+                                when NicoRepo::MYLIST_ADD, NicoRepo::IMAGE_CLIP then
+                                    "Mylist"
+                                when NicoRepo::ADVERTISE then
+                                    "Advertise"
+                                when NicoRepo::LIVE_BROADCAST, NicoRepo::CO_LIVE_BROADCAST then
+                                    "Live"
+                                when NicoRepo::CO_LIVE_RESERVE then
+                                    "Reserve"
+                                else
+                                    "Info"
+                                end
+                            }.call,
+                            :name => r.author_name,
+                            :nickname => r.author_name,
                             :profile_image_url => r.author_image_url,
-                            :url => r.author_url
+                            :url => r.author_url,
+                            :detail => ""
                         })
                     # 本文を生成してEntityも捏造
                     message_text = r.content_body
@@ -114,23 +135,26 @@ Plugin.create(:mikutter_nicorepo) do
     end
 
     def play(stream)
-        activity :mikutter_nsen, "#{stream[:video]} / #{stream[:title]}"
-        SerialThread.new do
+        activity :mikutter_niconico, "再生準備中 #{stream[:video]} / #{stream[:title]}"
+        Thread.new do
             fn = @reader.download(stream[:video])
             out = fn + ".wav"
-            if system("ffmpeg -i \"#{fn}\" -vn -ab 96k -ar 44100 -acodec pcm_s16le #{out}") then
+            if system("ffmpeg -i \"#{fn}\" -y -vn -ab 96k -ar 44100 -acodec pcm_s16le #{out}") then
+                @nplaying = stream
                 Plugin.call(:play_sound, out)
+                activity :mikutter_nsen, "♪♪ #{stream[:video]} / #{stream[:title]}"
             else
-                activity :mikutter_nsen, "再生失敗"
+                @nplaying = nil
+                activity :mikutter_niconico, "再生に失敗しました #{stream[:video]} / #{stream[:title]}"
             end
         end
     end
 
     def prepare(stream)
-        activity :mikutter_nsen, "プリロード(#{stream[:video]})"
-        SerialThread.new do
+        activity :mikutter_niconico, "プリロード(#{stream[:video]})"
+        Thread.new do
             fn = @reader.download(stream[:video])
-            activity :mikutter_nsen, "プリロード完了(#{fn})"
+            activity :mikutter_niconico, "プリロード完了(#{fn})"
         end
     end
 
@@ -141,7 +165,7 @@ Plugin.create(:mikutter_nicorepo) do
 
     command(:mikutter_nsen_play,
         name: "Nsenに接続",
-        condition: lambda{ |opt| true},
+        condition: lambda{ |opt| @nthread == nil},
         visible: false,
         role: :window) do |opt|
         session = @reader.get_nsen_session(0)
@@ -155,7 +179,7 @@ Plugin.create(:mikutter_nicorepo) do
             when Nsen::N_PREPARE then
                 prepare(stream)
             when Nsen::N_COMMENT then
-                activity :mikutter_nsen, "Comment: #{stream[:text]}"
+                activity :mikutter_nsen, "[Nsen] #{stream[:text]}"
             when "response" then
                 activity :mikutter_nsen, "Nsenに接続しました! (#{Nsen::CHANNEL[session[:channel]]})"
             else
@@ -163,6 +187,16 @@ Plugin.create(:mikutter_nicorepo) do
             end
         end
     end
+
+    command(:mikutter_nsen_now,
+        name: "Nsen NowPlayingツイート",
+        condition: lambda{ |opt| @nplaying != nil},
+        visible: false,
+        role: :window) do |opt|
+        text = "#{@nplaying[:title]} http://nico.ms/#{@nplaying[:video]} #NowPlaying"
+        Service.primary.update(message: text)
+    end
+        
 
     settings("niconico") do
         settings("niconicoアカウント") do
@@ -180,5 +214,9 @@ Plugin.create(:mikutter_nicorepo) do
 
     SerialThread.new {
         update()
+    }
+
+    at_exit {
+        FileUtils.rm(Dir.glob(File.join(Environment::TMPDIR, "*.(mp4|flv)(.wav)?")))
     }
 end
