@@ -105,23 +105,33 @@ module NicoRepo
             thumbinfo = ThumbInfo.new(id)
             flvinfo = getflv(id)
             filename = File.join(Environment::TMPDIR, "#{id}.#{thumbinfo.movie_type}")
-            unless File.exist?(filename) then
-                open(filename, "wb") do |f|
+            unless loading?(id) || File.exist?(filename) then
+                tmpname = File.join(Environment::TMPDIR, "#{id}.download")
+                open(tmpname, "wb") do |f|
                     video_url = CGI::unescape(flvinfo["url"])
                     f.print @agent.get_file(video_url)
                 end
+                puts "[mikutter_nsen] downloaded #{id}"
+                FileUtils.mv(tmpname, filename)
+            else
+                puts "[mikutter_nsen] already downloaded #{id}"
             end
             filename
+        end
+
+        def loading?(id)
+            File.exist?(File.join(Environment::TMPDIR, "#{id}.download"))
         end
     end
 end
 
 module Nsen
     CHANNEL = ["vocaloid", "toho", "nicoindies", "sing", "play", "pv", "hotaru", "allgenre"]
-    N_COMMENT = "comment"
-    N_PLAY = "play"
-    N_PREPARE = "prepare"
-    N_PANEL = "nspanel"
+    COMMENT = "comment"
+    PLAY = "play"
+    PREPARE = "prepare"
+    PANEL = "nspanel"
+    RESPONSE = "response"
 
     class NsenStream
         def initialize(address, port, thread)
@@ -142,10 +152,10 @@ module Nsen
                         res = nil
                         begin
                             res = {
-                                    type: "comment",
-                                    date: e.attribute("date").value(),
-                                    text: e.inner_text()
-                                }
+                                type: "comment",
+                                date: e.attribute("date").value(),
+                                text: e.inner_text()
+                            }
                             if res[:text].start_with?("/") then
                                 sp = res[:text].split(" ")
                                 sp[0].slice!(0)
@@ -159,14 +169,74 @@ module Nsen
                             end
                         rescue
                             res = {
-                                    type: "response",
-                                    element: e
-                                }
+                                type: "response",
+                                element: e
+                            }
                         end
                         yield(res)
                     end
                 end
             end
         end
+    end
+    
+    class QueuePlayer
+        def initialize(reader, callback)
+            @reader = reader
+            @callback = callback
+            @queue = Queue.new
+            @thread = gen_thread
+        end
+
+        def gen_thread
+            Thread.start do
+                while stream = @queue.pop
+                    play(stream)
+                end
+            end
+        end
+
+        def play(stream)
+            pid = nil
+            begin
+                # ローディングを待機する感じのアレ
+                while @reader.loading?(stream[:video]) 
+                    sleep(1)
+                end
+                fn = @reader.download(stream[:video])
+                out = fn + ".wav"
+                if system("ffmpeg -i \"#{fn}\" -y -vn -ab 96k -ar 44100 -acodec pcm_s16le #{out}") then
+                    @now_playing = stream
+                    @callback.call("♪♪ #{stream[:video]} / #{stream[:title]}")
+                    pid = IO.popen("aplay -q #{out}").pid
+                    Process.wait(pid)
+                    pid = nil
+                else
+                    @now_playing = nil
+                    @callback.call("再生失敗… #{stream[:video]} / #{stream[:title]}")
+                end
+            ensure
+                unless pid == nil then
+                    Process.kill("KILL", pid)
+                end
+            end
+        end
+
+        def stop()
+            @queue.clear
+            @thread.kill
+            @thread = nil
+        end
+
+        def push(stream)
+            @queue.push(stream)
+            if @thread == nil then
+                @thread = gen_thread
+            end
+            puts "[mikutter_nsen] pushed #{stream[:video]}"
+        end
+        
+        private :play
+        attr_reader :now_playing
     end
 end

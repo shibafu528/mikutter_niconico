@@ -6,6 +6,7 @@ Plugin.create(:mikutter_nicorepo) do
     UserConfig[:mikutter_nicorepo_reload_min]   ||= 5
     UserConfig[:mikutter_nicorepo_account_mail] ||= ""
     UserConfig[:mikutter_nicorepo_account_pass] ||= ""
+    UserConfig[:mikutter_nsen_default]          ||= 0
 
     defactivity "mikutter_niconico", "niconico"
     defactivity "mikutter_nsen", "Nsen"
@@ -17,16 +18,12 @@ Plugin.create(:mikutter_nicorepo) do
     @last_mail = nil
     @last_pass = nil
 
-    @nplaying = nil
-    @nthread = nil
-
-    @reader = NicoRepo::NicoRepoReader.new()
+    @reader = NicoRepo::NicoRepoReader.new
+    @nplayer = Nsen::QueuePlayer.new(@reader, lambda{|m| activity :mikutter_nsen, m})
 
     def update()
-        if @login_state == false || @last_mail != UserConfig[:mikutter_nicorepo_account_mail] || @last_pass != UserConfig[:mikutter_nicorepo_account_pass] then
-            login()
-        end
-        
+        login()
+
         if @login_state then
             reports = nil
             retried = false # リトライ管理
@@ -47,8 +44,8 @@ Plugin.create(:mikutter_nicorepo) do
                 reports.each {|r|
                     # 適当にごまかしつつユーザっぽいのものをでっちあげる
                     user = User.new({
-                            :id => 1,
-                            :idname => lambda{
+                            id: 1,
+                            idname: lambda{
                                 case r.report_type
                                 when NicoRepo::VIDEO_UPLOAD, NicoRepo::IMAGE_UPLOAD, NicoRepo::REGISTER_CHBLOG then
                                     "Upload"
@@ -64,25 +61,25 @@ Plugin.create(:mikutter_nicorepo) do
                                     "Info"
                                 end
                             }.call,
-                            :name => r.author_name,
-                            :nickname => r.author_name,
-                            :profile_image_url => r.author_image_url,
-                            :url => r.author_url,
-                            :detail => ""
+                            name: r.author_name,
+                            nickname: r.author_name,
+                            profile_image_url: r.author_image_url,
+                            url: r.author_url,
+                            detail: ""
                         })
                     # 本文を生成してEntityも捏造
                     message_text = r.content_body
                     entities = {
-                        :urls => [],
-                        :symbols => [],
-                        :hashtags => [],
-                        :user_mentions => []
+                        urls: [],
+                        symbols: [],
+                        hashtags: [],
+                        user_mentions: []
                     }
                     entities[:urls] << {
-                        :url => r.author_name,
-                        :expanded_url => r.author_url, 
-                        :display_url => r.author_name,
-                        :indices => [0, message_text.length]
+                        url: r.author_name,
+                        expanded_url: r.author_url, 
+                        display_url: r.author_name,
+                        indices: [0, message_text.length]
                     }
                     unless r.target_title.nil? then 
                         # targetが無いときもあるのでここで面倒を見ておく
@@ -91,20 +88,20 @@ Plugin.create(:mikutter_nicorepo) do
                         message_text += r.target_short_url
                         indices_e = message_text.length
                         entities[:urls] << {
-                                    :url => r.target_short_url,
-                                    :expanded_url => r.target_url,
-                                    :display_url => r.target_short_url,
-                                    :indices => [indices_s, indices_e]
+                                    url: r.target_short_url,
+                                    expanded_url: r.target_url,
+                                    display_url: r.target_short_url,
+                                    indices: [indices_s, indices_e]
                                 }
                     end
                     # Messageを捏造
                     message = Message.new({
-                            :id => r.time.to_i,
-                            :message => message_text,
-                            :user => user,
-                            :source => "nicorepo",
-                            :created => r.time,
-                            :entities => entities
+                            id: r.time.to_i,
+                            message: message_text,
+                            user: user,
+                            source: "nicorepo",
+                            created: r.time,
+                            entities: entities
                         })
                     # タイムラインにどーん
                     timeline(:nicorepo) << message
@@ -118,8 +115,9 @@ Plugin.create(:mikutter_nicorepo) do
         }
     end
 
-    def login() 
-        if UserConfig[:mikutter_nicorepo_account_mail] != "" && UserConfig[:mikutter_nicorepo_account_pass] != "" then
+    def login()
+        if (!@login_state || @last_mail != UserConfig[:mikutter_nicorepo_account_mail] || @last_pass != UserConfig[:mikutter_nicorepo_account_pass]) && 
+                (UserConfig[:mikutter_nicorepo_account_mail] != "" && UserConfig[:mikutter_nicorepo_account_pass] != "") then
             begin
                 @reader.login(UserConfig[:mikutter_nicorepo_account_mail],UserConfig[:mikutter_nicorepo_account_pass])
             rescue
@@ -134,74 +132,71 @@ Plugin.create(:mikutter_nicorepo) do
         end
     end
 
-    def play(stream)
-        activity :mikutter_niconico, "再生準備中 #{stream[:video]} / #{stream[:title]}"
-        Thread.new do
-            fn = @reader.download(stream[:video])
-            out = fn + ".wav"
-            if system("ffmpeg -i \"#{fn}\" -y -vn -ab 96k -ar 44100 -acodec pcm_s16le #{out}") then
-                @nplaying = stream
-                Plugin.call(:play_sound, out)
-                activity :mikutter_nsen, "♪♪ #{stream[:video]} / #{stream[:title]}"
-            else
-                @nplaying = nil
-                activity :mikutter_niconico, "再生に失敗しました #{stream[:video]} / #{stream[:title]}"
-            end
-        end
-    end
-
-    def prepare(stream)
-        activity :mikutter_niconico, "プリロード(#{stream[:video]})"
-        Thread.new do
-            fn = @reader.download(stream[:video])
-            activity :mikutter_niconico, "プリロード完了(#{fn})"
-        end
-    end
-
     tab(:mikutter_nicorepo, "ニコレポリーダー") do
         set_icon(ICON)
         timeline :nicorepo
     end
 
     command(:mikutter_nsen_play,
-        name: "Nsenに接続",
-        condition: lambda{ |opt| @nthread == nil},
+        name: "Nsen 接続/切断",
+        condition: lambda{ |opt| true},
         visible: false,
         role: :window) do |opt|
-        begin
-            session = @reader.get_nsen_session(0)
-        rescue
-            activity :mikutter_nsen, "Nsenの接続に失敗しました"
-            return
-        end
-        unless session[:current] == nil then
-            play(session[:current])
-        end
-        @nthread = session[:stream].start do |stream|
-            case stream[:type]
-            when Nsen::N_PLAY then
-                play(stream)
-            when Nsen::N_PREPARE then
-                prepare(stream)
-            when Nsen::N_COMMENT then
-                activity :mikutter_nsen, "[Nsen] #{stream[:text]}"
-            when "response" then
-                activity :mikutter_nsen, "Nsenに接続しました! (#{Nsen::CHANNEL[session[:channel]]})"
-            else
-                p stream
+        if @nstream == nil then
+            login()
+            begin
+                session = @reader.get_nsen_session(UserConfig[:mikutter_nsen_default])
+            rescue
+                activity :mikutter_nsen, "Nsenの接続に失敗しました"
+                return
             end
+            # 現在再生中の曲情報が付いていたらそれを再生する
+            unless session[:current] == nil then
+                @nplayer.push(session[:current])
+            end
+            @nstream = session[:stream].start do |stream|
+                case stream[:type]
+                when Nsen::PLAY then
+                    @nplayer.push(stream)
+                when Nsen::PREPARE then
+                    unless @reader.loading?(stream[:video]) then
+                        Thread.new do
+                            @reader.download(stream[:video])
+                        end
+                    end
+                when Nsen::RESPONSE then
+                    activity :mikutter_nsen, "Nsenに接続しました! (#{Nsen::CHANNEL[session[:channel]]})"
+                else
+                    p stream
+                end
+            end
+        else
+            @nstream.kill
+            @nstream = nil
+            @nplayer.stop
+            activity :mikutter_nsen, "Nsenから切断しました"
         end
     end
 
     command(:mikutter_nsen_now,
         name: "Nsen NowPlayingツイート",
-        condition: lambda{ |opt| @nplaying != nil},
+        condition: lambda{ |opt| @nplayer != nil && @nplayer.now_playing != nil},
         visible: false,
         role: :window) do |opt|
-        text = "#{@nplaying[:title]} http://nico.ms/#{@nplaying[:video]} #NowPlaying"
+        n = @nplayer.now_playing
+        text = "#{n[:title]} http://nico.ms/#{n[:video]} #NowPlaying"
         Service.primary.update(message: text)
     end
-        
+
+    command(:mikutter_nsen_info,
+        name: "Nsen 現在再生中の動画を確認",
+        condition: lambda{ |opt| @nplayer != nil && @nplayer.now_playing != nil},
+        visible: false,
+        role: :window) do |opt|
+        n = @nplayer.now_playing
+        text = "Nsen 現在再生中の曲は\n#{n[:title]} http://nico.ms/#{n[:video]}\nですっ！"
+        activity :system, text
+    end
 
     settings("niconico") do
         settings("niconicoアカウント") do
@@ -212,6 +207,16 @@ Plugin.create(:mikutter_nicorepo) do
             adjustment("更新間隔(分)", :mikutter_nicorepo_reload_min, 1, 30)
         end
         settings("Nsen") do
+            select("デフォルトチャンネル", :mikutter_nsen_default,
+                0 => "ch01 VOCALOID",
+                1 => "ch02 東方",
+                2 => "ch03 ニコニコインディーズ",
+                3 => "ch04 歌ってみた",
+                4 => "ch05 演奏してみた",
+                5 => "ch06 PV",
+                6 => "ch99 蛍の光",
+                7 => "ch00 オールジャンル"
+                )
         end
     end
     
@@ -222,6 +227,7 @@ Plugin.create(:mikutter_nicorepo) do
     }
 
     at_exit {
+        @nplayer.stop()
         FileUtils.rm(Dir.glob(File.join(Environment::TMPDIR, "*.(mp4|flv)(.wav)?")))
     }
 end
