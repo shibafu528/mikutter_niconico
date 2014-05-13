@@ -194,7 +194,7 @@ Plugin.create(:mikutter_nicorepo) do
         visible: false,
         role: :window) do |opt|
         n = @nplayer.now_playing
-        text = "Nsen 現在再生中の曲は\n#{n[:title]} http://nico.ms/#{n[:video]}\nですっ！"
+        text = "Nsen 現在再生中の曲は\n#{n[:title]}\nhttp://nico.ms/#{n[:video]}\nですっ！"
         activity :system, text
     end
 

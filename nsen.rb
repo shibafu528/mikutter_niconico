@@ -207,13 +207,13 @@ module Nsen
                 out = fn + ".wav"
                 if system("ffmpeg -i \"#{fn}\" -y -vn -ab 96k -ar 44100 -acodec pcm_s16le #{out}") then
                     @now_playing = stream
-                    @callback.call("♪♪ #{stream[:video]} / #{stream[:title]}")
+                    @callback.call("♪♪ #{stream[:title]}\n http://nico.ms/#{stream[:video]}")
                     pid = IO.popen("aplay -q #{out}").pid
                     Process.wait(pid)
                     pid = nil
                 else
                     @now_playing = nil
-                    @callback.call("再生失敗… #{stream[:video]} / #{stream[:title]}")
+                    @callback.call("再生失敗… #{stream[:title]}\n http://nico.ms/#{stream[:video]}")
                 end
             ensure
                 unless pid == nil then
