@@ -132,6 +132,47 @@ Plugin.create(:mikutter_nicorepo) do
         end
     end
 
+    def connected_nsen?() 
+        @nstream != nil
+    end
+
+    def connect_nsen(channel)
+        login()
+        begin
+            session = @reader.get_nsen_session(channel)
+        rescue
+            activity :mikutter_nsen, "Nsenの接続に失敗しました"
+            return
+        end
+        # 現在再生中の曲情報が付いていたらそれを再生する
+        unless session[:current] == nil then
+            @nplayer.push(session[:current])
+        end
+        @nstream = session[:stream].start do |stream|
+            case stream[:type]
+            when Nsen::PLAY then
+                @nplayer.push(stream)
+            when Nsen::PREPARE then
+                unless @reader.loading?(stream[:video]) then
+                    Thread.new do
+                        @reader.download(stream[:video])
+                    end
+                end
+            when Nsen::RESPONSE then
+                activity :mikutter_nsen, "Nsenに接続しました! (#{Nsen::CHANNEL[session[:channel]]})"
+            else
+                p stream
+            end
+        end
+    end
+
+    def disconnect_nsen() 
+        @nstream.kill
+        @nstream = nil
+        @nplayer.stop
+        activity :mikutter_nsen, "Nsenから切断しました"
+    end
+
     tab(:mikutter_nicorepo, "ニコレポリーダー") do
         set_icon(ICON)
         timeline :nicorepo
@@ -142,45 +183,66 @@ Plugin.create(:mikutter_nicorepo) do
         condition: lambda{ |opt| true},
         visible: false,
         role: :window) do |opt|
-        if @nstream == nil then
-            login()
-            begin
-                session = @reader.get_nsen_session(UserConfig[:mikutter_nsen_default])
-            rescue
-                activity :mikutter_nsen, "Nsenの接続に失敗しました"
-                return
-            end
-            # 現在再生中の曲情報が付いていたらそれを再生する
-            unless session[:current] == nil then
-                @nplayer.push(session[:current])
-            end
-            @nstream = session[:stream].start do |stream|
-                case stream[:type]
-                when Nsen::PLAY then
-                    @nplayer.push(stream)
-                when Nsen::PREPARE then
-                    unless @reader.loading?(stream[:video]) then
-                        Thread.new do
-                            @reader.download(stream[:video])
-                        end
-                    end
-                when Nsen::RESPONSE then
-                    activity :mikutter_nsen, "Nsenに接続しました! (#{Nsen::CHANNEL[session[:channel]]})"
-                else
-                    p stream
-                end
-            end
+        if connected_nsen? then
+            disconnect_nsen()
         else
-            @nstream.kill
-            @nstream = nil
-            @nplayer.stop
-            activity :mikutter_nsen, "Nsenから切断しました"
+            connect_nsen(UserConfig[:mikutter_nsen_default])
         end
+    end
+
+    command(:mikutter_nsen_change,
+        name: "Nsen チャンネル切り替え",
+        condition: lambda{ |opt| true },
+        visible: false,
+        role: :window) do |opt|
+        
+        dialog = Gtk::Dialog.new("Nsen", 
+            $main_application_window, 
+            Gtk::Dialog::DESTROY_WITH_PARENT,
+            [Gtk::Stock::CANCEL, Gtk::Dialog::RESPONSE_CANCEL])
+        
+        list = [
+            "ch0_1 VOCALOID",
+            "ch0_2 東方",
+            "ch0_3 ニコニコインディーズ",
+            "ch0_4 歌ってみた",
+            "ch0_5 演奏してみた",
+            "ch0_6 PV",
+            "ch9_9 蛍の光",
+            "ch0_0 オールジャンル"
+        ]
+
+        table = Gtk::Table.new(4, 2, true)
+        for i in 0..3 do
+            for j in 0..1 do
+                ch = i*2+j
+                button = Gtk::Button.new(list[ch])
+                button.signal_connect("activate", ch) do |instance, ch|
+                    if connected_nsen? then
+                        disconnect_nsen()
+                    end
+                    connect_nsen(ch)
+                    dialog.response(Gtk::Dialog::RESPONSE_ACCEPT)
+                end
+                button.signal_connect("clicked") do |instance|
+                    instance.activate
+                end
+                table.attach_defaults(button, j, j+1, i, i+1)
+            end
+        end
+        table.set_row_spacings(2)
+        table.set_column_spacings(4)
+        
+        dialog.vbox.add(table)
+        dialog.show_all()
+
+        result = dialog.run()
+        dialog.destroy()
     end
 
     command(:mikutter_nsen_now,
         name: "Nsen NowPlayingツイート",
-        condition: lambda{ |opt| @nplayer != nil && @nplayer.now_playing != nil},
+        condition: lambda{ |opt| connected_nsen? && @nplayer.now_playing != nil},
         visible: false,
         role: :window) do |opt|
         n = @nplayer.now_playing
@@ -190,7 +252,7 @@ Plugin.create(:mikutter_nicorepo) do
 
     command(:mikutter_nsen_info,
         name: "Nsen 現在再生中の動画を確認",
-        condition: lambda{ |opt| @nplayer != nil && @nplayer.now_playing != nil},
+        condition: lambda{ |opt| connected_nsen? && @nplayer.now_playing != nil},
         visible: false,
         role: :window) do |opt|
         n = @nplayer.now_playing
@@ -207,7 +269,7 @@ Plugin.create(:mikutter_nicorepo) do
             adjustment("更新間隔(分)", :mikutter_nicorepo_reload_min, 1, 30)
         end
         settings("Nsen") do
-            select("デフォルトチャンネル", :mikutter_nsen_default,
+            select("デフォルトの接続先", :mikutter_nsen_default,
                 0 => "ch01 VOCALOID",
                 1 => "ch02 東方",
                 2 => "ch03 ニコニコインディーズ",
