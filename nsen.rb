@@ -204,7 +204,10 @@ module Nsen
                     sleep(1)
                 end
                 fn = @reader.download(stream[:video])
-                out = fn + ".wav"
+                out = File.join(File.dirname(fn), "nsen.wav")
+                if File.exist?(out) then
+                    FileUtils.rm(out)
+                end
                 if system("ffmpeg -i \"#{fn}\" -y -vn -ab 96k -ar 44100 -acodec pcm_s16le #{out}") then
                     @now_playing = stream
                     @callback.call("♪♪ #{stream[:title]}\n http://nico.ms/#{stream[:video]}")

@@ -82,7 +82,7 @@ Plugin.create(:mikutter_nicorepo) do
                         indices: [0, message_text.length]
                     }
                     unless r.target_title.nil? then 
-                        # targetが無いときもあるのでここで面倒を見ておく
+n                        # targetが無いときもあるのでここで面倒を見ておく
                         message_text += "\n\n#{r.target_title}\n"
                         indices_s = message_text.length
                         message_text += r.target_short_url
@@ -290,6 +290,10 @@ Plugin.create(:mikutter_nicorepo) do
 
     at_exit {
         @nplayer.stop()
-        FileUtils.rm(Dir.glob(File.join(Environment::TMPDIR, "*.(mp4|flv)(.wav)?")))
+        tmpwav = File.join(Environment::TMPDIR, "nsen.wav")
+        if File.exist?(tmpwav) then
+            FileUtils.rm(tmpwav)
+        end
+        FileUtils.rm(Dir.glob(File.expand_path(Environment::TMPDIR) + "/*.download"))
     }
 end
