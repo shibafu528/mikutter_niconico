@@ -82,7 +82,7 @@ Plugin.create(:mikutter_niconico) do
                         user_mentions: []
                     }
                     unless r.target_title.nil? then 
-n                        # targetが無いときもあるのでここで面倒を見ておく
+                        # targetが無いときもあるのでここで面倒を見ておく
                         message_text += "\n\n#{r.target_title}\n"
                         indices_s = message_text.length
                         message_text += r.target_short_url
