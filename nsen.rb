@@ -78,7 +78,7 @@ module NicoRepo
         end
 
         def download(id)
-            puts "[mikutter_nsen] start download #{id}"
+            puts "[nsen.rb] start download #{id}"
             thumbinfo = ThumbInfo.new(id)
             flvinfo = getflv(id)
             filename = File.join(Environment::TMPDIR, "#{id}.#{thumbinfo.movie_type}")
@@ -88,10 +88,10 @@ module NicoRepo
                     video_url = CGI::unescape(flvinfo["url"])
                     f.print @agent.get_file(video_url)
                 end
-                puts "[mikutter_nsen] downloaded #{id}"
+                puts "[nsen.rb] downloaded #{id}"
                 FileUtils.mv(tmpname, filename)
             else
-                puts "[mikutter_nsen] already downloaded #{id}"
+                puts "[nsen.rb] already downloaded #{id}"
             end
             filename
         end
@@ -168,37 +168,35 @@ module Nsen
         def gen_thread
             Thread.start do
                 while stream = @queue.pop
-                    play(stream)
+                    sleep(1) while @reader.loading?(stream[:video])
+                    stream.update({ filename: @reader.download(stream[:video]) })
+                    if stream[:playback].nil? then
+                        play(stream)
+                    else
+                        stream[:playback].call(stream)
+                    end
                 end
             end
         end
 
         def play(stream)
             pid = nil
-            begin
-                # ローディングを待機する感じのアレ
-                while @reader.loading?(stream[:video]) 
-                    sleep(1)
-                end
-                fn = @reader.download(stream[:video])
-                out = File.join(File.dirname(fn), "nsen.wav")
-                if File.exist?(out) then
-                    FileUtils.rm(out)
-                end
-                if system("ffmpeg -i \"#{fn}\" -y -vn -ab 96k -ar 44100 -acodec pcm_s16le #{out}") then
+            out = File.join(File.dirname(stream[:filename]), "nsen.wav")
+            begin              
+                FileUtils.rm(out) if File.exist?(out)
+                if system("ffmpeg -i \"#{stream[:filename]}\" -y -vn -ab 96k -ar 44100 -acodec pcm_s16le #{out}") then
                     @now_playing = stream
                     @callback.call("♪♪ #{stream[:title]}\n http://nico.ms/#{stream[:video]}")
                     pid = IO.popen("aplay -q #{out}").pid
                     Process.wait(pid)
                     pid = nil
                 else
-                    @now_playing = nil
                     @callback.call("再生失敗… #{stream[:title]}\n http://nico.ms/#{stream[:video]}")
                 end
             ensure
-                unless pid == nil then
-                    Process.kill("KILL", pid)
-                end
+                Process.kill("KILL", pid) unless pid.nil?
+                FileUtils.rm(out) if File.exist?(out)
+                @now_playing = nil
             end
         end
 
@@ -208,11 +206,9 @@ module Nsen
             @thread = nil
         end
 
-        def push(stream)
-            @queue.push(stream)
-            if @thread == nil then
-                @thread = gen_thread
-            end
+        def push(stream, &playback)
+            @queue.push stream.merge({ playback: playback })
+            @thread = gen_thread if @thread.nil?
             puts "[mikutter_nsen] pushed #{stream[:video]}"
         end
         

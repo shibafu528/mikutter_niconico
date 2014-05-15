@@ -11,7 +11,6 @@ Plugin.create(:mikutter_niconico) do
 
     defactivity "mikutter_niconico", "niconico"
     defactivity "mikutter_nsen", "Nsen"
-    defactivity "mikutter_nicorepo", "ニコレポリーダー"
 
     ICON = File.join(File.dirname(__FILE__), 'mikutter_nicorepo.png').freeze
 
@@ -22,23 +21,28 @@ Plugin.create(:mikutter_niconico) do
     @reader = NicoRepo::NicoRepoReader.new
     @nplayer = Nsen::QueuePlayer.new(@reader, lambda{|m| activity :mikutter_nsen, m})
 
+    def double_try(slug, message)
+        retried = false
+        begin
+            yield
+        rescue => e
+            activity slug, "#{message}\n#{e.message}"
+            unless retried then
+                @login_state = false
+                login
+                retried = true
+                retry
+            end
+        end 
+    end
+
     def update()
         login()
 
         if @login_state then
             reports = nil
-            retried = false # リトライ管理
-            begin
-                reports = @reader.get()
-            rescue => e
-                activity :mikutter_nicorepo, "ニコレポの取得に失敗しました\n" + e.message
-                # ログインしてからリトライする処理は1回の取得操作で一度きりということにしておく
-                # あまり負荷かけたくないし...
-                unless retried then
-                    login()
-                    retried = true
-                    retry
-                end
+            double_try :mikutter_niconico, "ニコレポの取得に失敗しました" do
+                reports = @reader.get
             end
 
             unless reports.nil? then
@@ -106,7 +110,6 @@ Plugin.create(:mikutter_niconico) do
                     # タイムラインにどーん
                     timeline(:nicorepo) << message
                 }
-                activity :mikutter_nicorepo, "ニコレポを更新しました"
             end
         end
 
@@ -138,30 +141,29 @@ Plugin.create(:mikutter_niconico) do
 
     def connect_nsen(channel)
         login()
-        begin
+        session = nil
+        double_try :mikutter_nsen, "Nsenの接続に失敗しました" do
             session = @reader.get_nsen_session(channel)
-        rescue
-            activity :mikutter_nsen, "Nsenの接続に失敗しました"
-            return
         end
-        # 現在再生中の曲情報が付いていたらそれを再生する
-        unless session[:current] == nil then
-            @nplayer.push(session[:current])
-        end
-        @nstream = session[:stream].start do |stream|
-            case stream[:type]
-            when Nsen::PLAY then
-                @nplayer.push(stream)
-            when Nsen::PREPARE then
-                unless @reader.loading?(stream[:video]) then
-                    Thread.new do
-                        @reader.download(stream[:video])
+        unless session.nil? then 
+            # 現在再生中の曲情報が付いていたらそれを再生する
+            @nplayer.push(session[:current]) unless session[:current].nil?
+
+            @nstream = session[:stream].start do |stream|
+                case stream[:type]
+                when Nsen::PLAY then
+                    @nplayer.push(stream)
+                when Nsen::PREPARE then
+                    unless @reader.loading?(stream[:video]) then
+                        Thread.new do
+                            @reader.download(stream[:video])
+                        end
                     end
+                when Nsen::RESPONSE then
+                    activity :mikutter_nsen, "Nsenに接続しました! (#{Nsen::CHANNEL[session[:channel]]})"
+                else
+                    info stream
                 end
-            when Nsen::RESPONSE then
-                activity :mikutter_nsen, "Nsenに接続しました! (#{Nsen::CHANNEL[session[:channel]]})"
-            else
-                p stream
             end
         end
     end
@@ -218,9 +220,7 @@ Plugin.create(:mikutter_niconico) do
                 ch = i*2+j
                 button = Gtk::Button.new(list[ch])
                 button.signal_connect("activate", ch) do |instance, ch|
-                    if connected_nsen? then
-                        disconnect_nsen()
-                    end
+                    disconnect_nsen() if connected_nsen?
                     connect_nsen(ch)
                     dialog.response(Gtk::Dialog::RESPONSE_ACCEPT)
                 end
@@ -293,10 +293,6 @@ Plugin.create(:mikutter_niconico) do
 
     at_exit {
         @nplayer.stop()
-        tmpwav = File.join(Environment::TMPDIR, "nsen.wav")
-        if File.exist?(tmpwav) then
-            FileUtils.rm(tmpwav)
-        end
         FileUtils.rm(Dir.glob(File.expand_path(Environment::TMPDIR) + "/*.download"))
         if UserConfig[:mikutter_nsen_autoclean] then
             FileUtils.rm(Dir.glob(File.expand_path(Environment::TMPDIR) + "/*.mp4"))

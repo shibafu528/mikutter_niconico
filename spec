@@ -3,6 +3,7 @@ slug: :mikutter_niconico
 depends:
   mikutter: 0.2.2.1476
   plugin: 
+  - gui
   - gtk
   - settings
   - openimg
