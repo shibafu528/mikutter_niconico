@@ -2,11 +2,12 @@
 require_relative 'nicorepo'
 require_relative 'nsen'
 
-Plugin.create(:mikutter_nicorepo) do
+Plugin.create(:mikutter_niconico) do
     UserConfig[:mikutter_nicorepo_reload_min]   ||= 5
     UserConfig[:mikutter_nicorepo_account_mail] ||= ""
     UserConfig[:mikutter_nicorepo_account_pass] ||= ""
     UserConfig[:mikutter_nsen_default]          ||= 0
+    UserConfig[:mikutter_nsen_autoclean]        ||= true
 
     defactivity "mikutter_niconico", "niconico"
     defactivity "mikutter_nsen", "Nsen"
@@ -70,16 +71,15 @@ Plugin.create(:mikutter_nicorepo) do
                     # 本文を生成してEntityも捏造
                     message_text = r.content_body
                     entities = {
-                        urls: [],
+                        urls: [{
+                                url: r.author_name,
+                                expanded_url: r.author_url, 
+                                display_url: r.author_name,
+                                indices: [0, message_text.length]
+                            }],
                         symbols: [],
                         hashtags: [],
                         user_mentions: []
-                    }
-                    entities[:urls] << {
-                        url: r.author_name,
-                        expanded_url: r.author_url, 
-                        display_url: r.author_name,
-                        indices: [0, message_text.length]
                     }
                     unless r.target_title.nil? then 
 n                        # targetが無いときもあるのでここで面倒を見ておく
@@ -279,6 +279,9 @@ n                        # targetが無いときもあるのでここで面倒�
                 6 => "ch99 蛍の光",
                 7 => "ch00 オールジャンル"
                 )
+             boolean("mikutter終了時に動画キャッシュを削除", :mikutter_nsen_autoclean).
+                tooltip("Nsen経由でダウンロードした動画を葬ります。\n" + 
+                "この機能を使用しない場合は同じ動画を二度も取得せずに済みますが、回線速度やストレージ容量と相談で。")
         end
     end
     
@@ -295,5 +298,9 @@ n                        # targetが無いときもあるのでここで面倒�
             FileUtils.rm(tmpwav)
         end
         FileUtils.rm(Dir.glob(File.expand_path(Environment::TMPDIR) + "/*.download"))
+        if UserConfig[:mikutter_nsen_autoclean] then
+            FileUtils.rm(Dir.glob(File.expand_path(Environment::TMPDIR) + "/*.mp4"))
+            FileUtils.rm(Dir.glob(File.expand_path(Environment::TMPDIR) + "/*.flv"))
+        end
     }
 end

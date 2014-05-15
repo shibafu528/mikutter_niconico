@@ -43,29 +43,6 @@ module NicoRepo
             end
         end
 
-        def export_json
-            hash = {
-                "video_id" => @video_id,
-                "title" => @title,
-                "movie_type" => @movie_type,
-                "user_id" => @user_id,
-                "user_nickname" => @user_nickname,
-                "tags" => @tags
-            }
-            return JSON.generate(hash)
-        end
-
-        def import_json(json)
-            hash = JSON.parse(json)
-            @status = "ok"
-            @video_id = hash["video_id"]
-            @title = hash["title"]
-            @movie_type = hash["movie_type"]
-            @user_id = hash["user_id"]
-            @user_nickname = hash["user_nickname"]
-            @tags = hash["tags"]
-        end
-
         attr_reader :status, :video_id, :title, :movie_type, :user_id, :user_nickname, :tags
     end
 
