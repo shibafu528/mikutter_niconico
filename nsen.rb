@@ -174,6 +174,7 @@ module Nsen
                         play(stream)
                     else
                         stream[:playback].call(stream)
+                        @now_playing = stream
                     end
                 end
             end
@@ -204,6 +205,7 @@ module Nsen
             @queue.clear
             @thread.kill
             @thread = nil
+            @now_playing = nil
         end
 
         def push(stream, &playback)

@@ -1,16 +1,23 @@
 # -*- coding: utf-8 -*-
 require_relative 'nicorepo'
 require_relative 'nsen'
+require_relative 'mikutter_playback'
 
 Plugin.create(:mikutter_niconico) do
     UserConfig[:mikutter_nicorepo_reload_min]   ||= 5
     UserConfig[:mikutter_nicorepo_account_mail] ||= ""
     UserConfig[:mikutter_nicorepo_account_pass] ||= ""
     UserConfig[:mikutter_nsen_default]          ||= 0
-    UserConfig[:mikutter_nsen_autoclean]        ||= true
 
     defactivity "mikutter_niconico", "niconico"
     defactivity "mikutter_nsen", "Nsen"
+
+    PLAYPROC = Proc.new do |stream|
+        Plugin.call(:play_media, stream[:filename], 
+            Proc.new{
+                activity :mikutter_nsen, "♪♪ #{stream[:title]}\n http://nico.ms/#{stream[:video]}"
+            })
+    end
 
     ICON = File.join(File.dirname(__FILE__), 'mikutter_nicorepo.png').freeze
 
@@ -147,12 +154,12 @@ Plugin.create(:mikutter_niconico) do
         end
         unless session.nil? then 
             # 現在再生中の曲情報が付いていたらそれを再生する
-            @nplayer.push(session[:current]) unless session[:current].nil?
+            @nplayer.push(session[:current], &PLAYPROC) unless session[:current].nil?
 
             @nstream = session[:stream].start do |stream|
                 case stream[:type]
                 when Nsen::PLAY then
-                    @nplayer.push(stream)
+                    @nplayer.push(stream, &PLAYPROC)
                 when Nsen::PREPARE then
                     unless @reader.loading?(stream[:video]) then
                         Thread.new do
@@ -172,6 +179,7 @@ Plugin.create(:mikutter_niconico) do
         @nstream.kill
         @nstream = nil
         @nplayer.stop
+        Plugin.call(:stop_media)
         activity :mikutter_nsen, "Nsenから切断しました"
     end
 
@@ -269,6 +277,11 @@ Plugin.create(:mikutter_niconico) do
             adjustment("更新間隔(分)", :mikutter_nicorepo_reload_min, 1, 30)
         end
         settings("Nsen") do
+            select("出力プラグイン", :mikutter_playback_server) do
+                Plugin.filtering(:playback_servers, []).first.each do |value|
+                    option value.slug, value.name
+                end
+            end
             select("デフォルトの接続先", :mikutter_nsen_default,
                 0 => "ch01 VOCALOID",
                 1 => "ch02 東方",
