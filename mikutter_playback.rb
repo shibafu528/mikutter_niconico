@@ -19,7 +19,6 @@ Plugin.create :mikutter_playback do
                 if qthread.nil? then
                     qthread = Thread.start do
                         while request = queue.pop
-                            p request
                             t = nil
                             begin 
                                 t = request.server.play.call(request.filename)

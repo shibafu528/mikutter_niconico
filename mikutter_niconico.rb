@@ -3,6 +3,31 @@ require_relative 'nicorepo'
 require_relative 'nsen'
 require_relative 'mikutter_playback'
 
+class DownQueue
+    def initialize(reader, &callback)
+        @reader = reader
+        @queue = Queue.new
+        @thread = Thread.start do
+            while stream = @queue.pop
+                sleep(1) while @reader.loading?(stream[:video])
+                filename = @reader.download(stream[:video])
+                @now_playing = stream
+                Plugin.call(:play_media, filename, callback)
+            end
+        end
+    end
+
+    def enqueue(stream)
+        @queue.push(stream)
+    end
+
+    def clear
+        @queue.clear
+    end
+
+    attr_reader :now_playing
+end
+
 Plugin.create(:mikutter_niconico) do
     UserConfig[:mikutter_nicorepo_reload_min]   ||= 5
     UserConfig[:mikutter_nicorepo_account_mail] ||= ""
@@ -12,13 +37,6 @@ Plugin.create(:mikutter_niconico) do
     defactivity "mikutter_niconico", "niconico"
     defactivity "mikutter_nsen", "Nsen"
 
-    PLAYPROC = Proc.new do |stream|
-        Plugin.call(:play_media, stream[:filename], 
-            Proc.new{
-                activity :mikutter_nsen, "♪♪ #{stream[:title]}\n http://nico.ms/#{stream[:video]}"
-            })
-    end
-
     ICON = File.join(File.dirname(__FILE__), 'mikutter_nicorepo.png').freeze
 
     @login_state = false
@@ -26,7 +44,10 @@ Plugin.create(:mikutter_niconico) do
     @last_pass = nil
 
     @reader = NicoRepo::NicoRepoReader.new
-    @nplayer = Nsen::QueuePlayer.new(@reader, lambda{|m| activity :mikutter_nsen, m})
+    @nqueue = DownQueue.new(@reader) do
+        playing = @nqueue.now_playing
+        activity :mikutter_nsen, "♪♪ #{playing[:title]}\n http://nico.ms/#{playing[:video]}"
+    end
 
     def double_try(slug, message)
         retried = false
@@ -154,12 +175,12 @@ Plugin.create(:mikutter_niconico) do
         end
         unless session.nil? then 
             # 現在再生中の曲情報が付いていたらそれを再生する
-            @nplayer.push(session[:current], &PLAYPROC) unless session[:current].nil?
+            @nqueue.enqueue(session[:current]) unless session[:current].nil?
 
             @nstream = session[:stream].start do |stream|
                 case stream[:type]
                 when Nsen::PLAY then
-                    @nplayer.push(stream, &PLAYPROC)
+                    @nqueue.enqueue(stream)
                 when Nsen::PREPARE then
                     unless @reader.loading?(stream[:video]) then
                         Thread.new do
@@ -178,7 +199,6 @@ Plugin.create(:mikutter_niconico) do
     def disconnect_nsen() 
         @nstream.kill
         @nstream = nil
-        @nplayer.stop
         Plugin.call(:stop_media)
         activity :mikutter_nsen, "Nsenから切断しました"
     end
@@ -250,20 +270,20 @@ Plugin.create(:mikutter_niconico) do
 
     command(:mikutter_nsen_now,
         name: "Nsen NowPlayingツイート",
-        condition: lambda{ |opt| connected_nsen? && @nplayer.now_playing != nil},
+        condition: lambda{ |opt| connected_nsen? && @nqueue.now_playing != nil},
         visible: false,
         role: :window) do |opt|
-        n = @nplayer.now_playing
+        n = @nqueue.now_playing
         text = "#{n[:title]} http://nico.ms/#{n[:video]} #NowPlaying"
         Service.primary.update(message: text)
     end
 
     command(:mikutter_nsen_info,
         name: "Nsen 現在再生中の動画を確認",
-        condition: lambda{ |opt| connected_nsen? && @nplayer.now_playing != nil},
+        condition: lambda{ |opt| connected_nsen? && @nqueue.now_playing != nil},
         visible: false,
         role: :window) do |opt|
-        n = @nplayer.now_playing
+        n = @nqueue.now_playing
         text = "Nsen 現在再生中の曲は\n#{n[:title]}\nhttp://nico.ms/#{n[:video]}\nですっ！"
         activity :system, text
     end
@@ -305,7 +325,7 @@ Plugin.create(:mikutter_niconico) do
     }
 
     at_exit {
-        @nplayer.stop()
+        disconnect_nsen if connected_nsen?
         FileUtils.rm(Dir.glob(File.expand_path(Environment::TMPDIR) + "/*.download"))
         if UserConfig[:mikutter_nsen_autoclean] then
             FileUtils.rm(Dir.glob(File.expand_path(Environment::TMPDIR) + "/*.mp4"))
