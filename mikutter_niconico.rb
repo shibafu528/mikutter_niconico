@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 require_relative 'nicorepo'
 require_relative 'nsen'
-require_relative 'mikutter_playback'
 
 class DownQueue
     def initialize(reader, &callback)
@@ -12,7 +11,8 @@ class DownQueue
                 sleep(1) while @reader.loading?(stream[:video])
                 filename = @reader.download(stream[:video])
                 @now_playing = stream
-                Plugin.call(:play_media, filename, callback)
+                Plugin.call(:gst_play, filename)
+                callback.call
             end
         end
     end
@@ -297,11 +297,6 @@ Plugin.create(:mikutter_niconico) do
             adjustment("更新間隔(分)", :mikutter_nicorepo_reload_min, 1, 30)
         end
         settings("Nsen") do
-            select("出力プラグイン", :mikutter_playback_server) do
-                Plugin.filtering(:playback_servers, []).first.each do |value|
-                    option value.slug, value.name
-                end
-            end
             select("デフォルトの接続先", :mikutter_nsen_default,
                 0 => "ch01 VOCALOID",
                 1 => "ch02 東方",
