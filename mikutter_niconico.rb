@@ -11,7 +11,7 @@ class DownQueue
                 sleep(1) while @reader.loading?(stream[:video])
                 filename = @reader.download(stream[:video])
                 @now_playing = stream
-                Plugin.call(:gst_play, filename)
+                Plugin.call(:gst_play, filename, :mikutter_nsen)
                 callback.call
             end
         end
