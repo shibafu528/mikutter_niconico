@@ -199,7 +199,7 @@ Plugin.create(:mikutter_niconico) do
     def disconnect_nsen() 
         @nstream.kill
         @nstream = nil
-        Plugin.call(:stop_media)
+        Plugin.call(:gst_stop, :mikutter_nsen)
         activity :mikutter_nsen, "Nsenから切断しました"
     end
 
