@@ -10,9 +10,10 @@ class DownQueue
             while stream = @queue.pop
                 sleep(1) while @reader.loading?(stream[:video])
                 filename = @reader.download(stream[:video])
+                stream.update(filename: filename)
                 @now_playing = stream
-                Plugin.call(:gst_play, filename, :mikutter_nsen)
                 callback.call
+                Plugin.call(:gst_enq, filename, :mikutter_nsen)
             end
         end
     end
@@ -44,9 +45,18 @@ Plugin.create(:mikutter_niconico) do
     @last_pass = nil
 
     @reader = NicoRepo::NicoRepoReader.new
+    @infostock = {}
+    @nplaying = nil
     @nqueue = DownQueue.new(@reader) do
-        playing = @nqueue.now_playing
-        activity :mikutter_nsen, "♪♪ #{playing[:title]}\n http://nico.ms/#{playing[:video]}"
+        np = @nqueue.now_playing
+        @infostock[np[:filename]] = np
+    end
+
+    on_gst_stderr do |tag, message|
+        if connected_nsen? and tag == "mikutter_nsen" and /^Playing (.+)/ =~ message then
+            @nplaying = @infostock.delete($1)
+            activity :mikutter_nsen, "♪♪ #{@nplaying[:title]}\n http://nico.ms/#{@nplaying[:video]}" unless @nplaying.nil?
+        end
     end
 
     def double_try(slug, message)
@@ -199,6 +209,7 @@ Plugin.create(:mikutter_niconico) do
     def disconnect_nsen() 
         @nstream.kill
         @nstream = nil
+        @nplaying = nil
         Plugin.call(:gst_stop, :mikutter_nsen)
         activity :mikutter_nsen, "Nsenから切断しました"
     end
@@ -270,21 +281,19 @@ Plugin.create(:mikutter_niconico) do
 
     command(:mikutter_nsen_now,
         name: "Nsen NowPlayingツイート",
-        condition: lambda{ |opt| connected_nsen? && @nqueue.now_playing != nil},
+        condition: lambda{ |opt| connected_nsen? && @nplaying != nil},
         visible: false,
         role: :window) do |opt|
-        n = @nqueue.now_playing
-        text = "#{n[:title]} http://nico.ms/#{n[:video]} #NowPlaying"
+        text = "#{@nplaying[:title]} http://nico.ms/#{@nplaying[:video]} #NowPlaying"
         Service.primary.update(message: text)
     end
 
     command(:mikutter_nsen_info,
         name: "Nsen 現在再生中の動画を確認",
-        condition: lambda{ |opt| connected_nsen? && @nqueue.now_playing != nil},
+        condition: lambda{ |opt| connected_nsen? && @nplaying != nil},
         visible: false,
         role: :window) do |opt|
-        n = @nqueue.now_playing
-        text = "Nsen 現在再生中の曲は\n#{n[:title]}\nhttp://nico.ms/#{n[:video]}\nですっ！"
+        text = "Nsen 現在再生中の曲は\n#{@nplaying[:title]}\nhttp://nico.ms/#{@nplaying[:video]}\nですっ！"
         activity :system, text
     end
 
