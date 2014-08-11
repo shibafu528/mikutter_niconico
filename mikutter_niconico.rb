@@ -85,6 +85,7 @@ Plugin.create(:mikutter_niconico) do
             end
 
             unless reports.nil? then
+                msgs = Messages.new
                 reports.each {|r|
                     # 適当にごまかしつつユーザっぽいのものをでっちあげる
                     user = User.new({
@@ -147,8 +148,9 @@ Plugin.create(:mikutter_niconico) do
                             entities: entities
                         })
                     # タイムラインにどーん
-                    timeline(:nicorepo) << message
+                    msgs << message
                 }
+                Plugin.call(:extract_receive_message, :niconico_nicorepo, msgs)
             end
         end
 
@@ -216,9 +218,9 @@ Plugin.create(:mikutter_niconico) do
         activity :mikutter_nsen, "Nsenから切断しました"
     end
 
-    tab(:mikutter_nicorepo, "ニコレポリーダー") do
-        set_icon(ICON)
-        timeline :nicorepo
+    filter_extract_datasources do |datasources|
+        datasources[:niconico_nicorepo] = "ニコレポ"
+        [datasources]
     end
 
     command(:mikutter_nsen_play,
