@@ -46,6 +46,7 @@ Plugin.create(:mikutter_niconico) do
     @last_pass = nil
 
     @reader = NicoRepo::NicoRepoReader.new
+    @notify_max = 0
     @infostock = {}
     @nplaying = nil
     @nqueue = DownQueue.new(@reader) do
@@ -86,7 +87,7 @@ Plugin.create(:mikutter_niconico) do
 
             unless reports.nil? then
                 msgs = Messages.new
-                reports.each {|r|
+                reports.reverse.each {|r|
                     # 適当にごまかしつつユーザっぽいのものをでっちあげる
                     user = User.new({
                             id: 1,
@@ -148,7 +149,10 @@ Plugin.create(:mikutter_niconico) do
                             entities: entities
                         })
                     # タイムラインにどーん
-                    msgs << message
+                    if [@notify_max, message[:id]].max == message[:id]
+                        msgs << message
+                        @notify_max = message[:id]
+                    end
                 }
                 Plugin.call(:extract_receive_message, :niconico_nicorepo, msgs)
             end
