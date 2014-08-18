@@ -29,6 +29,17 @@ class DownQueue
     attr_reader :now_playing
 end
 
+# 偽造MessageのためにSystem Message化してから後で代入って面倒じゃないですか?
+# それを解決する画期的でコンパクトなコードです
+class FakeMessage < Message
+    self.keys = Message.keys
+
+    def initialize(value)
+        super(message: value[:message], system: true)
+        self.merge(value.dup)
+    end
+end
+
 Plugin.create(:mikutter_niconico) do
     UserConfig[:mikutter_nicorepo_reload_min]   ||= 5
     UserConfig[:mikutter_nicorepo_account_mail] ||= ""
@@ -140,7 +151,7 @@ Plugin.create(:mikutter_niconico) do
                                 }
                     end
                     # Messageを捏造
-                    message = Message.new({
+                    message = FakeMessage.new({
                             id: r.time.to_i,
                             message: message_text,
                             user: user,
