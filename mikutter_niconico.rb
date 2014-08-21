@@ -45,7 +45,6 @@ Plugin.create(:mikutter_niconico) do
     UserConfig[:mikutter_nicorepo_account_mail] ||= ""
     UserConfig[:mikutter_nicorepo_account_pass] ||= ""
     UserConfig[:mikutter_nsen_default]          ||= 0
-    UserConfig[:mikutter_nsen_volume]           ||= 0.8
 
     defactivity "mikutter_niconico", "niconico"
     defactivity "mikutter_nsen", "Nsen"
@@ -201,7 +200,6 @@ Plugin.create(:mikutter_niconico) do
         double_try :mikutter_nsen, "Nsenの接続に失敗しました" do
             session = @reader.get_nsen_session(channel)
         end
-        Plugin.call(:gst_set_volume, UserConfig[:mikutter_nsen_volume], :mikutter_nsen)
         unless session.nil? then 
             # 現在再生中の曲情報が付いていたらそれを再生する
             @nqueue.enqueue(session[:current]) unless session[:current].nil?
@@ -300,31 +298,6 @@ Plugin.create(:mikutter_niconico) do
         dialog.show_all()
 
         result = dialog.run()
-        dialog.destroy()
-    end
-
-    command(:mikutter_nsen_volume,
-        name: "Nsen ボリューム調整GUI",
-        condition: lambda{ |opt| true},
-        visible: false,
-        role: :window) do |opt|
-        dialog = Gtk::Dialog.new("Nsen Volume", 
-            $main_application_window, 
-            Gtk::Dialog::DESTROY_WITH_PARENT,
-            [Gtk::Stock::OK, Gtk::Dialog::RESPONSE_OK])
-        
-        scale = Gtk::HScale.new(0.0, 1.0, 0.01)
-        scale.value = UserConfig[:mikutter_nsen_volume].to_f / 100.0
-        scale.draw_value = true
-        scale.signal_connect("value-changed") do
-            volume = (scale.value*100).to_i
-            Plugin.call(:gst_set_volume, volume, :mikutter_nsen)
-            UserConfig[:mikutter_nsen_volume] = volume
-        end
-        dialog.vbox.add(scale)
-        dialog.show_all()
-        
-        dialog.run()
         dialog.destroy()
     end
 
