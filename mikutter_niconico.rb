@@ -238,6 +238,11 @@ Plugin.create(:mikutter_niconico) do
         [datasources]
     end
 
+    filter_gst_mixer do |channels|
+        channels << :mikutter_nsen
+        [channels]
+    end
+
     command(:mikutter_nsen_play,
         name: "Nsen 接続/切断",
         condition: lambda{ |opt| true},
