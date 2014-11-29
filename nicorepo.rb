@@ -95,7 +95,7 @@ module NicoRepo
     class NicoRepoReader
         def initialize()
             @agent = Mechanize.new
-            @agent.ssl_version = "SSLv3"
+            @agent.ssl_version = "TLSv1"
             @agent.request_headers = {"Accept-Language"=>"ja"}
         end
 
