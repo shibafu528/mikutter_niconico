@@ -1,12 +1,14 @@
 slug: :mikutter_niconico
 depends:
-  mikutter: 3.0.1
+  mikutter: 3.5.0-develop
   plugin: 
   - gui
   - gtk
   - settings
   - openimg
-version: '4.0'
-author: shibafu528
+version: '5.0'
+author:
+  - shibafu528
+  - toshi_a
 name: mikutter_niconico
 description: mikutter上でニコニコ動画の情報をキャッチ
