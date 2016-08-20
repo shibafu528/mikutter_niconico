@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 module Plugin::Niconico
   class User < Retriever::Model
+    include Retriever::Model::UserMixin
     self.keys = [[:name, :string, true],
                  [:idname, :string],
                  [:report_type, :string],
@@ -12,20 +13,5 @@ module Plugin::Niconico
       URI.parse(url).freeze
     end
 
-    def user
-      self
-    end
-
-    def profile_image_url_large
-      profile_image_url
-    end
-
-    def verified?
-      false
-    end
-
-    def protected?
-      false
-    end
   end
 end
