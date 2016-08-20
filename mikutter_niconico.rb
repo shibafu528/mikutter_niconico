@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 require_relative 'nicorepo'
 require_relative 'nsen'
+require_relative 'retriever/user'
+require_relative 'retriever/nicorepo'
 
 class DownQueue
     def initialize(reader, &callback)
@@ -85,11 +87,11 @@ Plugin.create(:mikutter_niconico) do
             end
 
             unless reports.nil? then
-                msgs = Messages.new
+                msgs = []
                 reports.each {|r|
                     # 適当にごまかしつつユーザっぽいのものをでっちあげる
-                    user = User.new({
-                            id: 1,
+                    user = Plugin::Niconico::User.new({
+                            report_type: r.report_type,
                             idname: lambda{
                                 case r.report_type
                                 when NicoRepo::VIDEO_UPLOAD, NicoRepo::IMAGE_UPLOAD, NicoRepo::REGISTER_CHBLOG then
@@ -107,10 +109,8 @@ Plugin.create(:mikutter_niconico) do
                                 end
                             }.call,
                             name: r.author_name,
-                            nickname: r.author_name,
                             profile_image_url: r.author_image_url,
-                            url: r.author_url,
-                            detail: ""
+                            url: r.author_url
                         })
                     # 本文を生成してEntityも捏造
                     message_text = r.content_body
@@ -139,12 +139,11 @@ Plugin.create(:mikutter_niconico) do
                                 }
                     end
                     # Messageを捏造
-                    message = Message.new({
-                            id: r.time.to_i,
+                    message = Plugin::Niconico::Nicorepo.new({
                             message: message_text,
                             user: user,
-                            source: "nicorepo",
                             created: r.time,
+                            url: r.target_url,
                             entities: entities
                         })
                     # タイムラインにどーん
