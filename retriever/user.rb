@@ -2,12 +2,12 @@
 module Plugin::Niconico
   class User < Retriever::Model
     include Retriever::Model::UserMixin
-    self.keys = [[:name, :string, true],
-                 [:idname, :string],
-                 [:report_type, :string],
-                 [:profile_image_url, :string],
-                 [:url, :string],
-                ]
+
+    field.string :name, required: true
+    field.string :idname
+    field.string :report_type
+    field.string :profile_image_url
+    field.string :url
 
     memoize def perma_link
       URI.parse(url).freeze

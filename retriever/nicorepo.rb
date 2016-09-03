@@ -5,14 +5,12 @@ module Plugin::Niconico
 
     register :nicorepo, name: "ニコレポ"
 
-    self.keys = [[:message, :string, true],
-                 [:user, Plugin::Niconico::User, true],
-                 [:created, :time],
-                 [:url, :string, true]
-                ]
-    def links
-      @entity ||= Message::Entity.new(self)
-    end
+    field.string :message, required: true
+    field.has    :user, Plugin::Niconico::User, required: true
+    field.time   :created
+    field.string :url, required: true
+
+    entity_class Retriever::Entity::URLEntity
 
     def to_show
       @to_show ||= self[:message].gsub(/&(gt|lt|quot|amp);/){|m| {'gt' => '>', 'lt' => '<', 'quot' => '"', 'amp' => '&'}[$1] }.freeze
