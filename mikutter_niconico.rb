@@ -112,39 +112,17 @@ Plugin.create(:mikutter_niconico) do
                             profile_image_url: r.author_image_url,
                             url: r.author_url
                         })
-                    # 本文を生成してEntityも捏造
                     message_text = r.content_body
-                    entities = {
-                        urls: [{
-                                url: r.author_name,
-                                expanded_url: r.author_url, 
-                                display_url: r.author_name,
-                                indices: [0, message_text.length]
-                            }],
-                        symbols: [],
-                        hashtags: [],
-                        user_mentions: []
-                    }
                     unless r.target_title.nil? then 
                         # targetが無いときもあるのでここで面倒を見ておく
-                        message_text += "\n\n#{r.target_title}\n"
-                        indices_s = message_text.length
-                        message_text += r.target_short_url
-                        indices_e = message_text.length
-                        entities[:urls] << {
-                                    url: r.target_short_url,
-                                    expanded_url: r.target_url,
-                                    display_url: r.target_short_url,
-                                    indices: [indices_s, indices_e]
-                                }
+                        message_text += "\n\n#{r.target_title}\n#{r.target_short_url}"
                     end
                     # Messageを捏造
                     message = Plugin::Niconico::Nicorepo.new({
                             message: message_text,
                             user: user,
                             created: r.time,
-                            url: r.target_url,
-                            entities: entities
+                            url: r.target_url
                         })
                     # タイムラインにどーん
                     msgs << message
