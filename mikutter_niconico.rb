@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 require_relative 'nicorepo'
 require_relative 'nsen'
-require_relative 'retriever/user'
-require_relative 'retriever/nicorepo'
+require_relative 'model/user'
+require_relative 'model/nicorepo'
 
 class DownQueue
     def initialize(reader, &callback)
