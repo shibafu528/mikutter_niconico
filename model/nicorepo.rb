@@ -8,7 +8,7 @@ module Plugin::Niconico
     field.string :message, required: true
     field.has    :user, Plugin::Niconico::User, required: true
     field.time   :created
-    field.string :url, required: true
+    field.string :url
 
     entity_class Retriever::Entity::URLEntity
 
@@ -17,7 +17,7 @@ module Plugin::Niconico
     end
 
     memoize def perma_link
-      URI.parse(url).freeze
+      URI.parse(url).freeze unless url.nil?
     end
 
   end
