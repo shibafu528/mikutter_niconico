@@ -44,11 +44,12 @@ module NicoRepo
             end
 
             element.children.each {|log_elem|
-                if log_elem["class"].to_s.include?("log-author ") then
+                if log_elem["class"].to_s.include?("log-author") then
                     # ニコレポの発生源を取得
                     author_elem = log_elem.at("a")
                     @author_url = author_elem.get_attribute("href")
-                    @author_image_url = author_elem.at("img").get_attribute("data-src")
+                    @author_image_url = author_elem.at("img").get_attribute("data-original")
+                    notice @author_image_url
                 elsif log_elem["class"] == "log-content" then
                     body_elem = log_elem.at("div.log-body")
 
@@ -68,7 +69,7 @@ module NicoRepo
                     # ニコレポにリンクされているコンテンツについての情報を取得
                     details_elem = log_elem.at("div.log-details")
                     begin
-                        @target_thumb = details_elem.at("div.log-target-thumbnail").at("a").at("img").get_attribute("data-src")
+                        @target_thumb = details_elem.at("div.log-target-thumbnail").at("a").at("img").get_attribute("data-original")
                     rescue; end
                     begin 
                         target_elem = details_elem.at("div.log-target-info").at("a")
