@@ -1,45 +1,14 @@
 # -*- coding: utf-8 -*-
 require_relative 'nicorepo'
-require_relative 'nsen'
 require_relative 'model/user'
 require_relative 'model/nicorepo'
-
-class DownQueue
-    def initialize(reader, &callback)
-        @reader = reader
-        @queue = Queue.new
-        @thread = Thread.start do
-            while stream = @queue.pop
-                sleep(1) while @reader.loading?(stream[:video])
-                filename = @reader.download(stream[:video])
-                stream.update(filename: filename)
-                @now_playing = stream
-                callback.call
-                Plugin.call(:gst_enq, filename, :mikutter_nsen)
-            end
-        end
-    end
-
-    def enqueue(stream)
-        @queue.push(stream)
-    end
-
-    def clear
-        @queue.clear
-    end
-
-    attr_reader :now_playing
-end
 
 Plugin.create(:mikutter_niconico) do
     UserConfig[:mikutter_nicorepo_reload_min]   ||= 5
     UserConfig[:mikutter_nicorepo_account_mail] ||= ""
     UserConfig[:mikutter_nicorepo_account_pass] ||= ""
-    UserConfig[:mikutter_nsen_default]          ||= 0
-    UserConfig[:mikutter_nsen_volume]           ||= 0.8
 
     defactivity "mikutter_niconico", "niconico"
-    defactivity "mikutter_nsen", "Nsen"
 
     ICON = File.join(File.dirname(__FILE__), 'mikutter_nicorepo.png').freeze
 
@@ -48,19 +17,6 @@ Plugin.create(:mikutter_niconico) do
     @last_pass = nil
 
     @reader = NicoRepo::NicoRepoReader.new
-    @infostock = {}
-    @nplaying = nil
-    @nqueue = DownQueue.new(@reader) do
-        np = @nqueue.now_playing
-        @infostock[np[:filename]] = np
-    end
-
-    on_gst_stderr do |tag, message|
-        if connected_nsen? and tag == "mikutter_nsen" and /^Playing (.+)/ =~ message then
-            @nplaying = @infostock.delete($1)
-            activity :mikutter_nsen, "♪♪ #{@nplaying[:title]}\n http://nico.ms/#{@nplaying[:video]}" unless @nplaying.nil?
-        end
-    end
 
     def double_try(slug, message)
         retried = false
@@ -153,154 +109,9 @@ Plugin.create(:mikutter_niconico) do
         end
     end
 
-    def connected_nsen?() 
-        @nstream != nil
-    end
-
-    def connect_nsen(channel)
-        login()
-        session = nil
-        double_try :mikutter_nsen, "Nsenの接続に失敗しました" do
-            session = @reader.get_nsen_session(channel)
-        end
-        Plugin.call(:gst_set_volume, UserConfig[:mikutter_nsen_volume], :mikutter_nsen)
-        unless session.nil? then 
-            # 現在再生中の曲情報が付いていたらそれを再生する
-            @nqueue.enqueue(session[:current]) unless session[:current].nil?
-
-            @nstream = session[:stream].start do |stream|
-                case stream[:type]
-                when Nsen::PLAY then
-                    @nqueue.enqueue(stream)
-                when Nsen::PREPARE then
-                    unless @reader.loading?(stream[:video]) then
-                        Thread.new do
-                            @reader.download(stream[:video])
-                        end
-                    end
-                when Nsen::RESPONSE then
-                    activity :mikutter_nsen, "Nsenに接続しました! (#{Nsen::CHANNEL[session[:channel]]})"
-                else
-                    info stream
-                end
-            end
-        end
-    end
-
-    def disconnect_nsen() 
-        @nstream.kill
-        @nstream = nil
-        @nplaying = nil
-        Plugin.call(:gst_stop, :mikutter_nsen)
-        activity :mikutter_nsen, "Nsenから切断しました"
-    end
-
     filter_extract_datasources do |datasources|
         datasources[:niconico_nicorepo] = "ニコレポ"
         [datasources]
-    end
-
-    command(:mikutter_nsen_play,
-        name: "Nsen 接続/切断",
-        condition: lambda{ |opt| true},
-        visible: false,
-        role: :window) do |opt|
-        if connected_nsen? then
-            disconnect_nsen()
-        else
-            connect_nsen(UserConfig[:mikutter_nsen_default])
-        end
-    end
-
-    command(:mikutter_nsen_change,
-        name: "Nsen チャンネル切り替え",
-        condition: lambda{ |opt| true },
-        visible: false,
-        role: :window) do |opt|
-        
-        dialog = Gtk::Dialog.new("Nsen", 
-            $main_application_window, 
-            Gtk::Dialog::DESTROY_WITH_PARENT,
-            [Gtk::Stock::CANCEL, Gtk::Dialog::RESPONSE_CANCEL])
-        
-        list = [
-            "ch0_1 VOCALOID",
-            "ch0_2 東方",
-            "ch0_3 ニコニコインディーズ",
-            "ch0_4 歌ってみた",
-            "ch0_5 演奏してみた",
-            "ch0_6 PV",
-            "ch9_9 蛍の光",
-            "ch0_0 オールジャンル"
-        ]
-
-        table = Gtk::Table.new(4, 2, true)
-        for i in 0..3 do
-            for j in 0..1 do
-                ch = i*2+j
-                button = Gtk::Button.new(list[ch])
-                button.signal_connect("activate", ch) do |instance, ch|
-                    disconnect_nsen() if connected_nsen?
-                    connect_nsen(ch)
-                    dialog.response(Gtk::Dialog::RESPONSE_ACCEPT)
-                end
-                button.signal_connect("clicked") do |instance|
-                    instance.activate
-                end
-                table.attach_defaults(button, j, j+1, i, i+1)
-            end
-        end
-        table.set_row_spacings(2)
-        table.set_column_spacings(4)
-        
-        dialog.vbox.add(table)
-        dialog.show_all()
-
-        result = dialog.run()
-        dialog.destroy()
-    end
-
-    command(:mikutter_nsen_volume,
-        name: "Nsen ボリューム調整GUI",
-        condition: lambda{ |opt| true},
-        visible: false,
-        role: :window) do |opt|
-        dialog = Gtk::Dialog.new("Nsen Volume", 
-            $main_application_window, 
-            Gtk::Dialog::DESTROY_WITH_PARENT,
-            [Gtk::Stock::OK, Gtk::Dialog::RESPONSE_OK])
-        
-        scale = Gtk::HScale.new(0.0, 1.0, 0.01)
-        scale.value = UserConfig[:mikutter_nsen_volume].to_f / 100.0
-        scale.draw_value = true
-        scale.signal_connect("value-changed") do
-            volume = (scale.value*100).to_i
-            Plugin.call(:gst_set_volume, volume, :mikutter_nsen)
-            UserConfig[:mikutter_nsen_volume] = volume
-        end
-        dialog.vbox.add(scale)
-        dialog.show_all()
-        
-        dialog.run()
-        dialog.destroy()
-    end
-
-    command(:mikutter_nsen_now,
-        name: "Nsen NowPlayingツイート",
-        condition: lambda{ |opt| connected_nsen? && @nplaying != nil},
-        visible: false,
-        role: :window) do |opt|
-        text = "#{@nplaying[:title]} http://nico.ms/#{@nplaying[:video]} #NowPlaying"
-        Service.primary.update(message: text)
-    end
-
-    command(:mikutter_nsen_info,
-        name: "Nsen 現在再生中の動画を確認",
-        condition: lambda{ |opt| connected_nsen? && @nplaying != nil},
-        visible: false,
-        role: :window) do |opt|
-        text = "Nsen 現在再生中の曲は\n#{@nplaying[:title]}\nhttp://nico.ms/#{@nplaying[:video]}\nですっ！"
-        activity :system, text
     end
 
     settings("niconico") do
@@ -311,35 +122,11 @@ Plugin.create(:mikutter_niconico) do
         settings("ニコレポリーダー") do
             adjustment("更新間隔(分)", :mikutter_nicorepo_reload_min, 1, 30)
         end
-        settings("Nsen") do
-            select("デフォルトの接続先", :mikutter_nsen_default,
-                0 => "ch01 VOCALOID",
-                1 => "ch02 東方",
-                2 => "ch03 ニコニコインディーズ",
-                3 => "ch04 歌ってみた",
-                4 => "ch05 演奏してみた",
-                5 => "ch06 PV",
-                6 => "ch99 蛍の光",
-                7 => "ch00 オールジャンル"
-                )
-             boolean("mikutter終了時に動画キャッシュを削除", :mikutter_nsen_autoclean).
-                tooltip("Nsen経由でダウンロードした動画を葬ります。\n" + 
-                "この機能を使用しない場合は同じ動画を二度も取得せずに済みますが、回線速度やストレージ容量と相談で。")
-        end
     end
     
     Plugin[:openimg].addsupport(/^http:\/\/(seiga\.nicovideo\.jp\/seiga|nico\.ms)\/im\d+/, "tag" => "meta", "attribute" => "content", "property" => "og:image")
 
     SerialThread.new {
         update()
-    }
-
-    at_exit {
-        disconnect_nsen if connected_nsen?
-        FileUtils.rm(Dir.glob(File.expand_path(Environment::TMPDIR) + "/*.download"))
-        if UserConfig[:mikutter_nsen_autoclean] then
-            FileUtils.rm(Dir.glob(File.expand_path(Environment::TMPDIR) + "/*.mp4"))
-            FileUtils.rm(Dir.glob(File.expand_path(Environment::TMPDIR) + "/*.flv"))
-        end
     }
 end
