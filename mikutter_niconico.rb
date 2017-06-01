@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 require_relative 'nicorepo'
 require_relative 'nsen'
+require_relative 'model/user'
+require_relative 'model/nicorepo'
 
 class DownQueue
     def initialize(reader, &callback)
@@ -85,11 +87,11 @@ Plugin.create(:mikutter_niconico) do
             end
 
             unless reports.nil? then
-                msgs = Messages.new
+                msgs = []
                 reports.each {|r|
                     # 適当にごまかしつつユーザっぽいのものをでっちあげる
-                    user = User.new({
-                            id: 1,
+                    user = Plugin::Niconico::User.new({
+                            report_type: r.report_type,
                             idname: lambda{
                                 case r.report_type
                                 when NicoRepo::VIDEO_UPLOAD, NicoRepo::IMAGE_UPLOAD, NicoRepo::REGISTER_CHBLOG then
@@ -107,45 +109,20 @@ Plugin.create(:mikutter_niconico) do
                                 end
                             }.call,
                             name: r.author_name,
-                            nickname: r.author_name,
                             profile_image_url: r.author_image_url,
-                            url: r.author_url,
-                            detail: ""
+                            url: r.author_url
                         })
-                    # 本文を生成してEntityも捏造
                     message_text = r.content_body
-                    entities = {
-                        urls: [{
-                                url: r.author_name,
-                                expanded_url: r.author_url, 
-                                display_url: r.author_name,
-                                indices: [0, r.author_name.length]
-                            }],
-                        symbols: [],
-                        hashtags: [],
-                        user_mentions: []
-                    }
                     unless r.target_title.nil? then 
                         # targetが無いときもあるのでここで面倒を見ておく
-                        message_text += "\n\n#{r.target_title}\n"
-                        indices_s = message_text.length
-                        message_text += r.target_short_url
-                        indices_e = message_text.length
-                        entities[:urls] << {
-                                    url: r.target_short_url,
-                                    expanded_url: r.target_url,
-                                    display_url: r.target_short_url,
-                                    indices: [indices_s, indices_e]
-                                }
+                        message_text += "\n\n#{r.target_title}\n#{r.target_short_url}"
                     end
                     # Messageを捏造
-                    message = Message.new({
-                            id: r.time.to_i,
+                    message = Plugin::Niconico::Nicorepo.new({
                             message: message_text,
                             user: user,
-                            source: "nicorepo",
                             created: r.time,
-                            entities: entities
+                            url: r.target_url
                         })
                     # タイムラインにどーん
                     msgs << message
