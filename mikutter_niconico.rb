@@ -119,7 +119,7 @@ Plugin.create(:mikutter_niconico) do
                                 url: r.author_name,
                                 expanded_url: r.author_url, 
                                 display_url: r.author_name,
-                                indices: [0, message_text.length]
+                                indices: [0, r.author_name.length]
                             }],
                         symbols: [],
                         hashtags: [],
