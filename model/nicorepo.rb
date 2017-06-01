@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+require_relative '../entity/nicorepo_entity'
+
 module Plugin::Niconico
   class Nicorepo < Retriever::Model
     include Retriever::Model::MessageMixin
@@ -10,7 +12,7 @@ module Plugin::Niconico
     field.time   :created
     field.string :url
 
-    entity_class Retriever::Entity::URLEntity
+    entity_class Plugin::Niconico::Entity::NicorepoEntity
 
     def to_show
       @to_show ||= self[:message].gsub(/&(gt|lt|quot|amp);/){|m| {'gt' => '>', 'lt' => '<', 'quot' => '"', 'amp' => '&'}[$1] }.freeze
