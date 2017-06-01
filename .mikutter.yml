@@ -1,6 +1,6 @@
 slug: :mikutter_niconico
 depends:
-  mikutter: 3.5.0-develop
+  mikutter: 3.5.0
   plugin: 
   - gui
   - gtk
