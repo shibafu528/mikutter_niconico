@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+require 'nokogiri'
+require 'httpclient'
+require 'open-uri'
 require_relative 'nicorepo'
 require_relative 'model/user'
 require_relative 'model/nicorepo'
@@ -123,8 +126,15 @@ Plugin.create(:mikutter_niconico) do
             adjustment("更新間隔(分)", :mikutter_nicorepo_reload_min, 1, 30)
         end
     end
-    
-    Plugin[:openimg].addsupport(/^http:\/\/(seiga\.nicovideo\.jp\/seiga|nico\.ms)\/im\d+/, "tag" => "meta", "attribute" => "content", "property" => "og:image")
+
+    defimageopener("NicoSeiga", /^http:\/\/(seiga\.nicovideo\.jp\/seiga|nico\.ms)\/im\d+/) do |display_url|
+        connection = HTTPClient.new
+        page = connection.get_content(display_url)
+        next nil if page.empty?
+        doc = Nokogiri::HTML(page)
+        result = doc.xpath("//meta[@property='og:image']/@content").first
+        open(result)
+    end
 
     SerialThread.new {
         update()
